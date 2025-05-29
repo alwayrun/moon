@@ -82,7 +82,7 @@ impl URLParser {
             String::from_iter(&input_chars.clone()[n..])
         };
 
-        let eof: char = unsafe { std::char::from_u32_unchecked(0xFFFFFFFF) };
+        let eof: char = '\0';
 
         loop {
             let c = *input_chars.get(pointer).unwrap_or(&eof);

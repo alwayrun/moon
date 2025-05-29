@@ -1,29 +1,17 @@
 mod action;
 
 pub use action::*;
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgMatches, Command};
 
 const AUTHOR: &'static str = "Viet-Hung Nguyen <viethungax@gmail.com>";
 
-pub fn accept_cli<'a>() -> ArgMatches<'a> {
-    let html_file_arg = Arg::with_name("html")
-        .long("html")
-        .required(false)
-        .takes_value(true);
+pub fn accept_cli() -> ArgMatches {
+    let html_file_arg = Arg::new("html").long("html").required(false);
+    let size_arg = Arg::new("size").long("size").required(true);
+    let once_flag = Arg::new("once").long("once");
+    let ouput_arg = Arg::new("output").long("output").required(true);
 
-    let size_arg = Arg::with_name("size")
-        .long("size")
-        .required(true)
-        .takes_value(true);
-
-    let once_flag = Arg::with_name("once").long("once");
-
-    let ouput_arg = Arg::with_name("output")
-        .long("output")
-        .required(true)
-        .takes_value(true);
-
-    let render_once_subcommand = App::new("render")
+    let render_once_subcommand = Command::new("render")
         .about("Start a rendering process of Moon and render once")
         .author(AUTHOR)
         .arg(html_file_arg.clone().required(true))
@@ -31,7 +19,7 @@ pub fn accept_cli<'a>() -> ArgMatches<'a> {
         .arg(once_flag.clone())
         .arg(ouput_arg.clone());
 
-    App::new("Moon Renderer")
+    Command::new("Moon Renderer")
         .author(AUTHOR)
         .about("Moon web browser!")
         .subcommand(render_once_subcommand)

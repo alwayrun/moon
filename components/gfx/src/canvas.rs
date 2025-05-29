@@ -32,7 +32,7 @@ impl<'a> Canvas<'a> {
     const CHUNK_SIZE: u64 = 10 * 1024;
 
     pub async fn new() -> Canvas<'a> {
-        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -62,6 +62,7 @@ impl<'a> Canvas<'a> {
             dimension: wgpu::TextureDimension::D2,
             format: TEXTURE_FORMAT,
             usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
         };
 
         let frame = device.create_texture(&frame_desc);
@@ -95,10 +96,11 @@ impl<'a> Canvas<'a> {
 
     pub fn resize(&mut self, size: (u32, u32)) {
         let (width, height) = size;
-        self.frame_desc.size.width = width;
-        self.frame_desc.size.height = height;
+        self.frame_desc.size.width = std::cmp::min(width, 5000);
+        self.frame_desc.size.height = std::cmp::min(height, 5000);
 
-        self.output_buffer_desc.size = (self.get_bytes_per_row() * height) as u64;
+        self.output_buffer_desc.size =
+            (self.get_bytes_per_row() * self.frame_desc.size.height) as u64;
 
         self.frame = self.device.create_texture(&self.frame_desc);
         self.frame_texture_view = self.frame.create_view(&Default::default());
@@ -125,10 +127,12 @@ impl<'a> Canvas<'a> {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                    store: true,
+                    store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
 
         self.backend.draw(
@@ -151,8 +155,8 @@ impl<'a> Canvas<'a> {
                 buffer: &self.output_buffer,
                 layout: wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: core::num::NonZeroU32::new(self.get_bytes_per_row()),
-                    rows_per_image: core::num::NonZeroU32::new(self.frame_desc.size.height),
+                    bytes_per_row: Some(self.get_bytes_per_row()),
+                    rows_per_image: Some(self.frame_desc.size.height),
                 },
             },
             self.frame_desc.size,

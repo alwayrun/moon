@@ -58,7 +58,12 @@ impl<'a> DisplayListBuilder<'a> {
     pub fn build(mut self, layout_box: &LayoutBoxPtr) -> DisplayList {
         let overflow_data = OverflowData {
             visible: true,
-            visible_region: Rect::new(0., 0., self.canvas_size.width, self.canvas_size.height),
+            visible_region: Rect::new(
+                0.,
+                0.,
+                self.canvas_size.width as f32,
+                self.canvas_size.height as f32,
+            ),
         };
         self.process(layout_box, &overflow_data);
         log::debug!("Number of Paintable nodes: {}", self.paintable_nodes_count);
@@ -194,7 +199,12 @@ impl<'a> DisplayListBuilder<'a> {
         if layout_box.is_body_element() && self.root_element_use_body_background {
             // Render the canvas for the root element if has been delegated.
             if self.root_element_use_body_background {
-                rect = Rect::new(0., 0., self.canvas_size.width, self.canvas_size.height);
+                rect = Rect::new(
+                    0.,
+                    0.,
+                    self.canvas_size.width as f32,
+                    self.canvas_size.height as f32,
+                );
             }
         }
 

@@ -104,7 +104,7 @@ impl Pipeline {
                 .formatting_context()
                 .run(&mut layout_context, initial_block_box.clone());
 
-            dump_layout!(initial_block_box);
+            // dump_layout!(initial_block_box);
 
             initial_block_box
         });

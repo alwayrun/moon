@@ -1,5 +1,4 @@
 use clap::ArgMatches;
-use std::str::FromStr;
 
 pub enum Action {
     RenderOnce(RenderOnceParams),
@@ -12,20 +11,20 @@ pub struct RenderOnceParams {
     pub output_path: String,
 }
 
-pub fn get_action<'a>(matches: ArgMatches<'a>) -> Action {
+pub fn get_action<'a>(matches: ArgMatches) -> Action {
     if let Some(matches) = matches.subcommand_matches("render") {
-        let html: String = get_arg(&matches, "html").unwrap();
-        let raw_size: String = get_arg(&matches, "size").unwrap();
-        let output_path: String = get_arg(&matches, "output").unwrap();
+        let html = matches.get_one::<String>("html").expect("Required");
+        let raw_size = matches.get_one::<String>("size").expect("Required");
+        let output_path = matches.get_one::<String>("output").expect("Required");
 
-        let is_render_once = get_flag(&matches, "once");
+        let is_render_once = matches.get_flag("once");
 
         let viewport_size = parse_size(&raw_size);
 
         if is_render_once {
             return Action::RenderOnce(RenderOnceParams {
-                html_path: html,
-                output_path,
+                html_path: html.clone(),
+                output_path: output_path.clone(),
                 viewport_size,
             });
         }
@@ -45,15 +44,4 @@ fn parse_size(raw_size: &str) -> (u32, u32) {
         &[width, height, ..] => (width, height),
         _ => unreachable!(),
     }
-}
-
-fn get_arg<'a, T: FromStr>(matches: &ArgMatches, name: &'a str) -> Option<T> {
-    matches
-        .value_of(name)
-        .map(|arg_str| arg_str.parse::<T>().ok())
-        .unwrap_or(None)
-}
-
-fn get_flag<'a>(matches: &ArgMatches, flag: &'a str) -> bool {
-    matches.is_present(flag)
 }

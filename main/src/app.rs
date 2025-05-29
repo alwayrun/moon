@@ -1,26 +1,21 @@
-use std::hash::Hasher;
-
-use crate::{
-    fonts::ICON_FONT,
-    state::{
-        browser::{Browser, BrowserHandler},
-        browser_tab::TabEvent,
-    },
+use crate::state::{
+    browser::{Browser, BrowserHandler},
+    browser_tab::TabEvent,
 };
+use flume::Receiver;
 use iced::{
-    executor,
-    futures::{stream::BoxStream, StreamExt},
-    keyboard::{KeyCode, Modifiers},
-    widget::{button, column, container, image, row, text, text_input},
-    Application, Command, Event, Renderer, Theme,
+    futures::{stream, SinkExt, Stream, StreamExt},
+    keyboard::{Key, Modifiers},
+    widget::{button, canvas, column, container, image, row, text, text_input},
+    Event, Font, Renderer,
 };
 use shared::primitive::{Point, Size};
 
 pub struct Moon {
     browser: BrowserHandler,
     url_input_content: String,
-    content_width: u32,
-    content_height: u32,
+    content_width: f32,
+    content_height: f32,
     content_data: Vec<u8>,
     title: String,
 }
@@ -30,44 +25,40 @@ pub enum Message {
     URLInputContentChanged(String),
     URLNavigationTriggered,
     ContentDataChanged(Vec<u8>),
-    WindowResized(u32, u32),
+    WindowResized(f32, f32),
     MouseScrolled(f32, f32),
     MouseMoved(f32, f32),
-    KeyPressed(KeyCode, Modifiers),
+    KeyPressed(Key, Modifiers),
     TitleChanged(String),
     ReloadTriggered,
     NoOp,
 }
 
-impl Application for Moon {
-    type Executor = executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
-
-    fn new(_: Self::Flags) -> (Self, Command<Self::Message>) {
+impl Default for Moon {
+    fn default() -> Self {
         let browser = Browser::new();
         let handler = browser.handler();
         std::thread::spawn(move || {
             browser.run().expect("Browser panic");
         });
 
-        let instance = Moon {
+        Self {
             browser: handler,
             url_input_content: String::new(),
-            content_width: 0,
-            content_height: 0,
+            content_width: 0.,
+            content_height: 0.,
             content_data: Vec::new(),
             title: String::new(),
-        };
-        (instance, Command::none())
+        }
     }
+}
 
+impl Moon {
     fn title(&self) -> String {
         self.title.clone()
     }
 
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::URLNavigationTriggered => {
                 let url = self.url_input_content.clone();
@@ -81,8 +72,8 @@ impl Application for Moon {
             }
             Message::WindowResized(width, height) => {
                 self.content_width = width;
-                self.content_height = height - 40;
-                self.browser.resize(Size::new(width as f32, height as f32));
+                self.content_height = height - 40.;
+                self.browser.resize(Size::new(width, height));
             }
             Message::MouseScrolled(_, y) => {
                 self.browser.scroll(-y);
@@ -90,10 +81,11 @@ impl Application for Moon {
             Message::MouseMoved(x, y) => {
                 self.browser.handle_mouse_move(Point::new(x, y));
             }
-            Message::KeyPressed(KeyCode::F5, _) | Message::ReloadTriggered => {
+            Message::KeyPressed(Key::Named(iced::keyboard::key::Named::F5), _)
+            | Message::ReloadTriggered => {
                 self.browser.reload();
             }
-            Message::KeyPressed(KeyCode::U, Modifiers::CTRL) => {
+            Message::KeyPressed(_, Modifiers::CTRL) => {
                 self.browser.view_source_current_tab();
             }
             Message::TitleChanged(new_title) => {
@@ -102,34 +94,36 @@ impl Application for Moon {
             Message::KeyPressed(_, _) => {}
             Message::NoOp => {}
         }
-        Command::none()
     }
 
-    fn subscription(&self) -> iced::Subscription<Self::Message> {
-        struct BrowserSub(BrowserHandler);
-        impl<H: Hasher, M> iced::subscription::Recipe<H, M> for BrowserSub {
-            type Output = (usize, TabEvent);
-
-            fn hash(&self, _: &mut H) {
-                // TODO: implement this
-            }
-
-            fn stream(self: Box<Self>, _: BoxStream<M>) -> BoxStream<Self::Output> {
-                self.0.events().into_stream().boxed()
-            }
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        let browser_events = self.browser.events();
+        fn browser_events_handler(
+            browser_events: Receiver<(usize, TabEvent)>,
+        ) -> impl Stream<Item = Message> {
+            iced::stream::channel(1, move |mut output| async move {
+                loop {
+                    let (_, tab_event) = browser_events.recv().expect("Tab disconected!");
+                    let message = match tab_event {
+                        TabEvent::FrameReceived(data) => Message::ContentDataChanged(data),
+                        TabEvent::TitleChanged(new_title) => Message::TitleChanged(new_title),
+                        TabEvent::URLChanged(new_url) => {
+                            Message::URLInputContentChanged(new_url.as_str())
+                        }
+                        _ => Message::NoOp,
+                    };
+                    output.send(message).await.unwrap();
+                }
+            })
         }
-        let browser_sub = iced::Subscription::from_recipe(BrowserSub(self.browser.clone())).map(
-            |(_, tab_event)| match tab_event {
-                TabEvent::FrameReceived(data) => Message::ContentDataChanged(data),
-                TabEvent::TitleChanged(new_title) => Message::TitleChanged(new_title),
-                TabEvent::URLChanged(new_url) => Message::URLInputContentChanged(new_url.as_str()),
-                _ => Message::NoOp,
-            },
+        let browser_sub = iced::Subscription::run_with_id(
+            1,
+            browser_events_handler(browser_events).map(|message| message),
         );
 
-        let events_sub = iced::subscription::events().map(|event| match event {
-            Event::Window(iced::window::Event::Resized { width, height }) => {
-                Message::WindowResized(width, height)
+        let events_sub = iced::event::listen().map(|event| match event {
+            Event::Window(iced::window::Event::Resized(size)) => {
+                Message::WindowResized(size.width, size.height)
             }
             Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => match delta {
                 iced::mouse::ScrollDelta::Pixels { x, y } => Message::MouseScrolled(x, y),
@@ -138,10 +132,9 @@ impl Application for Moon {
             Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
                 Message::MouseMoved(position.x, position.y)
             }
-            Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key_code,
-                modifiers,
-            }) => Message::KeyPressed(key_code, modifiers),
+            Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                Message::KeyPressed(key, modifiers)
+            }
             _ => Message::NoOp,
         });
 
@@ -149,7 +142,7 @@ impl Application for Moon {
         iced::Subscription::batch(subs)
     }
 
-    fn view(&self) -> iced::Element<Self::Message, Renderer<Self::Theme>> {
+    pub fn view(&self) -> iced::Element<Message> {
         let content = column![
             row![reload_button(), primary_bar(&self.url_input_content),],
             content_area(
@@ -164,9 +157,9 @@ impl Application for Moon {
 
 fn reload_button() -> iced::Element<'static, Message> {
     let icon = text('\u{ec7f}')
-        .font(ICON_FONT)
-        .vertical_alignment(iced::alignment::Vertical::Center)
-        .horizontal_alignment(iced::alignment::Horizontal::Center);
+        .font(Font::with_name("IcoFont"))
+        .align_y(iced::alignment::Vertical::Center)
+        .align_x(iced::alignment::Horizontal::Center);
     button(icon)
         .width(iced::Length::Fixed(40.))
         .height(iced::Length::Fixed(40.))
@@ -179,18 +172,18 @@ fn primary_bar(url_content: &str) -> iced::Element<'static, Message> {
         .on_input(Message::URLInputContentChanged)
         .on_submit(Message::URLNavigationTriggered)
         .icon(text_input::Icon {
-            font: ICON_FONT,
+            font: Font::with_name("IcoFont"),
             side: text_input::Side::Left,
             code_point: '\u{ed11}',
-            size: Some(16.),
+            size: Some(iced::Pixels(16.)),
             spacing: 10.,
         })
         .padding(10)
         .into()
 }
 
-fn content_area(width: u32, height: u32, content: Vec<u8>) -> iced::Element<'static, Message> {
-    let image_handle = image::Handle::from_pixels(width, height, content);
+fn content_area(width: f32, height: f32, content: Vec<u8>) -> iced::Element<'static, Message> {
+    let image_handle = image::Handle::from_bytes(content);
     let content_image = iced::widget::image(image_handle)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill);
