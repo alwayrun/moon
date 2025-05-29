@@ -4,10 +4,10 @@ use crate::state::{
 };
 use flume::Receiver;
 use iced::{
-    futures::{stream, SinkExt, Stream, StreamExt},
+    futures::{SinkExt, Stream, StreamExt},
     keyboard::{Key, Modifiers},
-    widget::{button, canvas, column, container, image, row, text, text_input},
-    Event, Font, Renderer,
+    widget::{button, column, container, image, row, text, text_input},
+    Event, Font,
 };
 use shared::primitive::{Point, Size};
 
@@ -54,7 +54,7 @@ impl Default for Moon {
 }
 
 impl Moon {
-    fn title(&self) -> String {
+    pub fn title(&self) -> String {
         self.title.clone()
     }
 
@@ -85,7 +85,7 @@ impl Moon {
             | Message::ReloadTriggered => {
                 self.browser.reload();
             }
-            Message::KeyPressed(_, Modifiers::CTRL) => {
+            Message::KeyPressed(Key::Character(character), Modifiers::CTRL) if character == "u" => {
                 self.browser.view_source_current_tab();
             }
             Message::TitleChanged(new_title) => {
@@ -183,8 +183,9 @@ fn primary_bar(url_content: &str) -> iced::Element<'static, Message> {
 }
 
 fn content_area(width: f32, height: f32, content: Vec<u8>) -> iced::Element<'static, Message> {
-    let image_handle = image::Handle::from_bytes(content);
+    let image_handle = image::Handle::from_rgba(width as u32, height as u32, content);
     let content_image = iced::widget::image(image_handle)
+        .content_fit(iced::ContentFit::None)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill);
 

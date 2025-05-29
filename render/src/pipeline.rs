@@ -1,7 +1,6 @@
 use dom::node::NodePtr;
 use gfx::{Bitmap, Canvas, CanvasCPU, TextMeasure};
 use layout::{
-    dump_layout,
     formatting_context::{establish_context, FormattingContextType},
     layout_box::{LayoutBox, LayoutBoxPtr},
     layout_context::LayoutContext,
